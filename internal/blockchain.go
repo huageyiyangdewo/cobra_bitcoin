@@ -19,7 +19,7 @@ type BlockChain struct {
 }
 
 // NewBlockChain 实现创建区块链的方法
-func NewBlockChain() *BlockChain {
+func NewBlockChain(miner string) *BlockChain {
 	//genesisBlock := NewBlock(configs.GenesisInfo, []byte{0x00000000000000})
 	//
 	//bc := &BlockChain{
@@ -44,7 +44,9 @@ func NewBlockChain() *BlockChain {
 				log.Panicln(err)
 			}
 
-			genesisBlock := NewBlock(configs.GenesisInfo, []byte{})
+			// 创世块中只有一个挖矿交易，只有 coinbase
+			coinbase := NewCoinbaseTx(miner, configs.GenesisInfo)
+			genesisBlock := NewBlock([]*Transaction{coinbase}, []byte{})
 			err = b.Put(genesisBlock.Hash, genesisBlock.Serialize() /*将区块序列化，转成字节流*/ )
 			if err != nil {
 				fmt.Printf("db put err: %s \n", err)
@@ -71,7 +73,7 @@ func NewBlockChain() *BlockChain {
 }
 
 // AddBlock 添加区块
-func (bc *BlockChain) AddBlock(data string) {
+func (bc *BlockChain) AddBlock(txs []*Transaction) {
 	//// 1、创建一个区块
 	//lastBlock := bc.Blocks[len(bc.Blocks)-1] // 最后一个区块就是新区块的 prevHash
 	//hash := lastBlock.Hash
@@ -87,7 +89,7 @@ func (bc *BlockChain) AddBlock(data string) {
 
 		}
 
-		block := NewBlock(data, bc.Tail)
+		block := NewBlock(txs, bc.Tail)
 		err := b.Put(block.Hash, block.Serialize() /*将区块序列化，转成字节流*/ )
 		if err != nil {
 			fmt.Printf("db put err: %s \n", err)
@@ -145,4 +147,131 @@ func (it *BlockChainIterator) Next() *Block {
 	}
 
 	return block
+}
+
+// FindMyUtxos 找到所有的 utxo
+func (bc *BlockChain) FindMyUtxos(address string) []TxOutput {
+
+	var utxos []TxOutput // 未消耗的
+
+	// 这里是标识已经消耗过的 utxo 的结构，key是交易id，value是这个id在input中的索引
+	spentUTXOs := make(map[string][]int64)
+
+	it := bc.NewBlockChainIterator()
+	// 遍历账本
+	for {
+		block := it.Next()
+		// 遍历交易
+		for _, tx := range block.Transactions {
+			// 遍历 inputs
+			for _, input := range tx.TxInputs {
+				if input.Address == address {
+					key := string(input.TxID)
+					spentUTXOs[key] = append(spentUTXOs[key], input.Index)
+				}
+			}
+
+			// 遍历 output
+			OUTPUT:
+				for i, output := range tx.TxOutputs {
+					key := string(tx.TxID)
+					indexes := spentUTXOs[key] // 当前交易有被消耗过的 output
+					if len(indexes) != 0 {
+						for _, j  := range indexes {
+							if int64(i) == j { // 这笔交易已经被消耗过了
+								continue OUTPUT
+							}
+						}
+					}
+
+					// 找到属于我的所有的 output
+					if output.Address == address {
+						fmt.Printf("找到了属于 %s 的output，i: %d\n", address, i)
+						utxos = append(utxos, output)
+					}
+				}
+		}
+
+		if len(block.PrevHash) == 0 {
+			break
+		}
+	}
+
+
+	return utxos
+}
+
+func (bc *BlockChain) GetBalance(address string) {
+	utxos := bc.FindMyUtxos(address)
+
+	var total = 0.0
+	for _, utxo := range utxos {
+		total += utxo.Value
+	}
+
+	fmt.Printf("%s 的余额为 %f\n", address, total)
+}
+
+// FindNeedUtxos 遍历账本，找到属于付款人的合适的金额，把这个 outputs 找到
+func (bc *BlockChain) FindNeedUtxos(from string, value float64) (map[string][]int64, float64) {
+	utxos := make(map[string][]int64) // 标识能用的 utxo
+	var resValue float64 // 这些 utxo 存储的金额
+
+
+	// ++++++++++++++++++++
+	// 这里是标识已经消耗过的 utxo 的结构，key是交易id，value是这个id在input中的索引
+	spentUTXOs := make(map[string][]int64)
+
+	it := bc.NewBlockChainIterator()
+	// 遍历账本
+	for {
+		block := it.Next()
+		// 遍历交易
+		for _, tx := range block.Transactions {
+			// 遍历 inputs
+			for _, input := range tx.TxInputs {
+				if input.Address == from {
+					key := string(input.TxID)
+					spentUTXOs[key] = append(spentUTXOs[key], input.Index)
+				}
+			}
+
+			// 遍历 output
+		OUTPUT:
+			for i, output := range tx.TxOutputs {
+				key := string(tx.TxID)
+				indexes := spentUTXOs[key] // 当前交易有被消耗过的 output
+				if len(indexes) != 0 {
+					for _, j  := range indexes {
+						if int64(i) == j { // 这笔交易已经被消耗过了
+							continue OUTPUT
+						}
+					}
+				}
+
+				// 找到属于我的所有的 output
+				if output.Address == from {
+					fmt.Printf("找到了属于 %s 的output，i: %d\n", from, i)
+
+					// 找到符合条件的 output,添加到返回逻辑中
+					utxos[key] = append(utxos[key], int64(i))
+					resValue += output.Value
+					// 判断一下金额是否满足
+					if resValue >= value {
+						// 满足，直接返回，
+						return utxos, resValue
+					}
+					// 不满足，继续遍历直到遍历完整个 链
+				}
+			}
+		}
+
+		if len(block.PrevHash) == 0 {
+			break
+		}
+	}
+
+
+	// ++++++++++++++++++++
+	return utxos, 0.0
 }

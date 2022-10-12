@@ -6,7 +6,6 @@ import (
 	"cobra_bitcoin/utils"
 	"crypto/sha256"
 	"encoding/gob"
-	"fmt"
 	"log"
 	"time"
 )
@@ -23,10 +22,12 @@ type Block struct {
 	Nonce      uint64 // 随机数
 
 	Hash []byte // 哈希, 为了方便，我们将当前区块的哈希放入Block中
-	Data []byte // 数据
+
+	//Data []byte // 数据
+	Transactions []*Transaction // v4改成交易数据
 }
 
-func NewBlock(data string, prevHash []byte) *Block {
+func NewBlock(txs []*Transaction, prevHash []byte) *Block {
 	block := &Block{
 		Version:    00,
 		PrevHash:   prevHash,
@@ -35,7 +36,8 @@ func NewBlock(data string, prevHash []byte) *Block {
 		Difficulty: configs.Bits, //
 		//Nonce:      10, // 后期调整
 		Hash:       []byte{},
-		Data:       []byte(data),
+		//Data:       []byte(data),
+		Transactions: txs,
 	}
 
 	//block.SetHash()
@@ -43,6 +45,8 @@ func NewBlock(data string, prevHash []byte) *Block {
 	hash, nonce := pow.Run()
 	block.Hash = hash
 	block.Nonce = nonce
+
+	block.HashTransaction() // 赋值 merkleroot
 
 	return block
 }
@@ -65,7 +69,7 @@ func (b *Block) SetHash() {
 		utils.Uint64ToByte(b.TimeStamp),
 		utils.Uint64ToByte(b.Difficulty),
 		utils.Uint64ToByte(b.Nonce),
-		b.Data,
+		//b.Data, // todo
 	}
 	data := bytes.Join(tmp, []byte{})
 
@@ -89,7 +93,7 @@ func (b *Block) Serialize() []byte {
 
 // DeSerialize 反序列化
 func DeSerialize(data []byte) *Block {
-	fmt.Printf("解码传入的数据： %x \n", data)
+	//fmt.Printf("解码传入的数据： %x \n", data)
 	b := &Block{}
 	decoder := gob.NewDecoder(bytes.NewReader(data))
 	err := decoder.Decode(b)
@@ -98,4 +102,17 @@ func DeSerialize(data []byte) *Block {
 	}
 
 	return b
+}
+
+// HashTransaction 模拟梅克尔根，做一个简单的处理
+func (b *Block) HashTransaction() {
+	// 我们的交易的ID就是交易的哈希值，所以我们可以将交易id拼接起来，整体做一次哈希运算
+	// 作为 merkleroot
+
+	var hashes []byte
+	for _, v := range b.Transactions {
+		hashes = append(hashes, v.TxID...)
+	}
+	hash := sha256.Sum256(hashes)
+	b.MerkleRoot = hash[:]
 }
