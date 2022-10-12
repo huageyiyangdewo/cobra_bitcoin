@@ -40,7 +40,7 @@ func init() {
 	// when this action is called directly.
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
-	blockChain = internal.NewBlockChain()
+	blockChain = internal.NewBlockChain("test")
 }
 
 // initConfig reads in config file and ENV variables if set.

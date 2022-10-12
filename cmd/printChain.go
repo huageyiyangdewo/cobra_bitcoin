@@ -12,7 +12,7 @@ import (
 var printChainCmd = &cobra.Command{
 	Use:   "printChain",
 	Short: "print block chain info",
-	Long: `print block chain info`,
+	Long: `printChain 打印区块链`,
 	Run: func(cmd *cobra.Command, args []string) {
 		it := blockChain.NewBlockChainIterator()
 		for {
@@ -25,7 +25,7 @@ var printChainCmd = &cobra.Command{
 			fmt.Printf("Difficulty: %d \n", v.Difficulty)
 			fmt.Printf("Nonce: %d \n", v.Nonce)
 			fmt.Printf("Hash: %x \n", v.Hash)
-			fmt.Printf("Data: %s \n", v.Data)
+			fmt.Printf("Data: %s \n", v.Transactions[0].TxInputs[0].Address)
 
 			pow := internal.NewProofOfWork(v)
 			fmt.Printf("IsValid: %v\n", pow.IsValid())

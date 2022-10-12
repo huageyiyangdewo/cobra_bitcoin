@@ -85,8 +85,11 @@ func (pow *ProofOfWork) prepareData(nonce uint64) []byte {
 		utils.Uint64ToByte(b.TimeStamp),
 		utils.Uint64ToByte(b.Difficulty),
 		utils.Uint64ToByte(nonce),
-		b.Data,
+		//b.Data, todo
 	}
+
+	// 更正：比特币做哈希值，并不是对整个区块做哈希，而是对区块头做哈希
+
 	data := bytes.Join(tmp, []byte{})
 	return data
 }
